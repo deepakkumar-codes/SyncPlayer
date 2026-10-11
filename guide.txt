@@ -1,0 +1,4 @@
+node server.js
+
+
+in mobile type http://10.227.122.241:3000

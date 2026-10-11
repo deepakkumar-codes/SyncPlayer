@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ETHER Media | Editorial</title>
+    
+    <!-- Dependencies -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/studio-freight/lenis@1.0.29/bundled/lenis.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg: #eaddcf;
+            --text: #0d0d0d;
+            --accent: #ff3333;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Space Mono', monospace;
+            overflow-x: hidden;
+            cursor: none;
+        }
+
+        /* Tape Recorder Cursor */
+        .cursor {
+            position: fixed; top: 0; left: 0;
+            width: 24px; height: 24px;
+            background: var(--text);
+            z-index: 9999; pointer-events: none;
+            transform: translate(-50%, -50%);
+            display: flex; justify-content: center; align-items: center;
+            transition: width 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+                        height 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+                        border-radius 0.3s, background 0.3s;
+        }
+        .cursor::before, .cursor::after {
+            content: ''; position: absolute;
+            width: 6px; height: 6px;
+            background: var(--bg); border-radius: 50%;
+        }
+        .cursor::before { left: 4px; }
+        .cursor::after { right: 4px; }
+
+        .cursor.active {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+        .cursor.active::before, .cursor.active::after { display: none; }
+        .cursor-text {
+            font-family: 'Space Mono', monospace;
+            font-size: 14px; font-weight: bold;
+            color: #fff; opacity: 0;
+            transition: opacity 0.3s; letter-spacing: 2px;
+        }
+        .cursor.active .cursor-text { opacity: 1; }
+
+        /* Unlock Overlay */
+        #unlock-overlay {
+            position: fixed; inset: 0;
+            background: var(--accent); z-index: 1000;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
+        }
+        .unlock-content { text-align: center; color: #000; }
+        .huge-title {
+            font-family: 'Anton', sans-serif;
+            font-size: clamp(80px, 15vw, 250px);
+            line-height: 0.9; margin-bottom: 40px; text-transform: uppercase;
+        }
+        #unlockBtn {
+            background: #000; color: #fff; border: none;
+            padding: 20px 50px; font-family: 'Space Mono', monospace;
+            font-weight: bold; font-size: 18px; cursor: none;
+            box-shadow: 10px 10px 0px #fff; transition: 0.2s; text-transform: uppercase;
+        }
+        #unlockBtn:hover { transform: translate(5px, 5px); box-shadow: 5px 5px 0px #fff; background: var(--bg); color: #000; }
+
+        /* Main App */
+        #app { display: none; }
+
+        /* Hero Section */
+        .hero {
+            height: 100vh; display: flex; justify-content: center; align-items: center;
+            position: relative; border-bottom: 8px solid var(--text);
+        }
+        .cd-container { position: absolute; z-index: 10; pointer-events: none; }
+        .cd {
+            width: clamp(300px, 60vh, 700px);
+            height: clamp(300px, 60vh, 700px);
+            border-radius: 50%;
+            background-image: url('https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=1500');
+            background-size: cover; background-position: center;
+            border: 10px solid #111;
+            box-shadow: 20px 30px 60px rgba(0,0,0,0.4);
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden;
+        }
+        .cd::after {
+            content: ''; position: absolute; inset: 0;
+            background: conic-gradient(from 0deg, transparent 0%, rgba(255,255,255,0.4) 15%, transparent 30%, transparent 50%, rgba(255,255,255,0.4) 65%, transparent 80%);
+            mix-blend-mode: overlay; border-radius: 50%;
+        }
+        .cd-hole {
+            width: clamp(60px, 12vh, 120px);
+            height: clamp(60px, 12vh, 120px);
+            background: var(--bg); border-radius: 50%;
+            border: 8px solid #111;
+            box-shadow: inset 0 10px 20px rgba(0,0,0,0.5); z-index: 2;
+        }
+        
+        .marquee-container {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 100vw; overflow: hidden; white-space: nowrap; pointer-events: none;
+        }
+        .marquee {
+            display: inline-block; font-family: 'Anton', sans-serif;
+            font-size: clamp(100px, 20vh, 300px); color: var(--text);
+            text-transform: uppercase; line-height: 1; letter-spacing: -2px;
+        }
+        .hero-footer {
+            position: absolute; bottom: 30px; left: 30px; right: 30px;
+            display: flex; justify-content: space-between; font-weight: bold;
+            font-size: 14px; text-transform: uppercase; border-top: 2px solid var(--text); padding-top: 10px;
+        }
+
+        /* Editorial Layout */
+        .editorial {
+            padding: 150px 5vw; position: relative;
+            background: #0d0d0d; color: var(--bg); min-height: 150vh;
+        }
+        .img-1 {
+            position: absolute; top: 100px; right: 5vw;
+            width: clamp(250px, 35vw, 500px);
+            filter: grayscale(100%) contrast(1.3); z-index: 1;
+            border: 4px solid var(--bg);
+        }
+        .img-2 {
+            position: absolute; top: 600px; left: 5vw;
+            width: clamp(200px, 30vw, 450px);
+            filter: sepia(0.8) hue-rotate(180deg) contrast(1.5); z-index: 1;
+            border: 4px solid var(--bg);
+        }
+        .editorial-text {
+            position: absolute; top: 200px; left: 10vw; z-index: 2;
+            mix-blend-mode: difference; pointer-events: none;
+        }
+        .editorial-text h2 {
+            font-family: 'Anton', sans-serif; font-size: clamp(80px, 12vw, 200px);
+            line-height: 0.85; margin-bottom: 20px; color: #fff; text-transform: uppercase;
+        }
+        .editorial-text p { font-size: 1.2rem; max-width: 400px; color: #fff; font-weight: bold; line-height: 1.5; }
+
+        /* Player Hardware */
+        #player-wrapper {
+            background: var(--bg); color: var(--text);
+            border: 6px solid var(--text);
+            box-shadow: 20px 20px 0px var(--accent);
+            padding: 40px; position: relative; z-index: 10;
+            max-width: 850px; margin: 400px auto 100px;
+        }
+        .hardware-screws { display: flex; justify-content: space-between; margin-bottom: 25px; }
+        .hardware-screws.bottom { margin-bottom: 0; margin-top: 25px; }
+        .hardware-screws span { font-family: sans-serif; font-weight: 900; font-size: 24px; color: #555; }
+        
+        video {
+            width: 100%; min-height: 250px; background: #000; border: 4px solid #000; object-fit: contain; cursor: none;
+        }
+
+        #controls-bar { margin-top: 40px; }
+        .track-label {
+            font-family: 'Anton', sans-serif; font-size: clamp(30px, 5vw, 45px);
+            text-align: center; text-transform: uppercase;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            border-bottom: 4px solid var(--text); padding-bottom: 15px; margin-bottom: 35px;
+        }
+
+        /* Scrubber as analog radio tuner */
+        .timeline { position: relative; height: 50px; background: #000; overflow: hidden; display: flex; align-items: center; border: 2px solid #000; }
+        .timeline::before {
+            content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px;
+            background: repeating-linear-gradient(90deg, #444, #444 2px, transparent 2px, transparent 15px);
+        }
+        .time-text { font-weight: bold; width: 70px; text-align: center; color: #fff; z-index: 2; mix-blend-mode: difference; }
+        #progressBar {
+            position: absolute; left: 0; width: 100%; height: 100%; -webkit-appearance: none; background: transparent; z-index: 3; cursor: none;
+        }
+        #progressBar::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 12px; height: 60px; background: var(--accent); cursor: none; border: 2px solid #000;
+        }
+
+        /* Buttons */
+        .btn-row { display: flex; justify-content: center; gap: 30px; margin-top: 45px; }
+        .ctrl-btn {
+            background: #000; color: #fff; border: none; padding: 20px 30px; font-size: 28px; cursor: none;
+            box-shadow: 6px 6px 0px var(--accent); transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .ctrl-btn:active { transform: translate(6px, 6px); box-shadow: 0px 0px 0px var(--accent); }
+        
+        .channel-row { display: flex; justify-content: center; gap: 15px; margin-top: 45px; }
+        .chan-btn {
+            background: transparent; border: 3px solid #000; padding: 12px 25px;
+            font-weight: bold; font-family: 'Space Mono', monospace; font-size: 14px; cursor: none;
+            transition: 0.2s;
+        }
+        .chan-btn:hover { background: #000; color: #fff; }
+        .chan-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+        /* Queue */
+        #playlist-container { padding: 100px 5vw; background: var(--bg); border-top: 8px solid var(--text); }
+        .queue-header {
+            font-family: 'Anton', sans-serif; font-size: clamp(40px, 8vw, 80px);
+            border-bottom: 8px solid #000; padding-bottom: 20px; margin-bottom: 40px; text-transform: uppercase;
+        }
+        .playlist-item {
+            display: flex; align-items: center; padding: 30px 20px; border-bottom: 3px solid #000; cursor: none;
+            transition: background 0.3s, color 0.3s;
+        }
+        .playlist-item:hover { background: #000; color: var(--bg); }
+        .playlist-item.active { background: var(--accent); color: #000; }
+        .playlist-item.dragging { opacity: 0.5; background: #000; color: #fff; transform: scale(1.02); }
+        
+        .drag-handle { padding-right: 30px; font-size: 24px; }
+        .song-title { flex-grow: 1; font-family: 'Anton', sans-serif; font-size: clamp(24px, 4vw, 40px); pointer-events: none; letter-spacing: 1px; }
+        .reorder-btns { display: flex; flex-direction: column; gap: 5px; }
+        .reorder-btns button { background: transparent; border: none; font-size: 20px; padding: 5px; cursor: none; color: inherit; transition: color 0.2s; }
+        .reorder-btns button:hover { color: var(--accent); }
+
+        @media (max-width: 768px) {
+            .editorial { padding: 80px 20px; }
+            .img-1, .img-2 { position: relative; top: auto; right: auto; left: auto; width: 100%; max-width: none; margin-bottom: 40px; }
+            .editorial-text { position: relative; top: auto; left: auto; mix-blend-mode: normal; color: var(--bg); margin-bottom: 60px; }
+            .editorial-text h2 { color: var(--bg); }
+            .editorial-text p { color: #aaa; }
+            #player-wrapper { margin-top: 40px; margin-bottom: 40px; padding: 20px; border-width: 4px; box-shadow: 10px 10px 0px var(--accent); }
+            .btn-row { gap: 15px; }
+            .ctrl-btn { padding: 15px 20px; font-size: 20px; }
+            .playlist-item { padding: 20px 10px; }
+            .drag-handle { padding-right: 15px; font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="cursor"><div class="cursor-text"></div></div>
+
+    <div id="unlock-overlay">
+        <div class="unlock-content">
+            <div class="huge-title">ETHER<br>SYSTEM</div>
+            <button id="unlockBtn">ENGAGE PLAYBACK</button>
+        </div>
+    </div>
+
+    <div id="app">
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="marquee-container">
+                <div class="marquee">
+                    <span>HIGH FIDELITY SYNC // ETHER SPATIAL MEDIA // HIGH FIDELITY SYNC // ETHER SPATIAL MEDIA // </span>
+                    <span>HIGH FIDELITY SYNC // ETHER SPATIAL MEDIA // HIGH FIDELITY SYNC // ETHER SPATIAL MEDIA // </span>
+                </div>
+            </div>
+            <div class="cd-container">
+                <div class="cd">
+                    <div class="cd-hole"></div>
+                </div>
+            </div>
+            <div class="hero-footer">
+                <p>SCROLL TO EXPLORE</p>
+                <p>LOCAL NETWORK MEDIA SERVER</p>
+            </div>
+        </section>
+
+        <!-- Editorial Spread -->
+        <section class="editorial">
+            <img src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?q=80&w=1000" class="parallax img-1" data-speed="0.8">
+            <img src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=1000" class="parallax img-2" data-speed="1.15">
+            
+            <div class="editorial-text parallax" data-speed="0.95">
+                <h2>ANALOG<br>HEART</h2>
+                <p>Precise NTP-style clock syncing. Stereo channel splitting. Multi-device harmony delivered through a brutalist lens.</p>
+            </div>
+
+            <!-- Player Hardware -->
+            <div id="player-wrapper">
+                <div class="hardware-screws">
+                    <span>+</span><span>+</span>
+                </div>
+                <video id="myVideo" preload="auto" playsinline webkit-playsinline></video>
+                
+                <div id="controls-bar">
+                    <div class="track-label" id="track-label">AWAITING TAPE...</div>
+                    
+                    <div class="timeline">
+                        <div class="time-text" id="time-current">0:00</div>
+                        <input type="range" id="progressBar" min="0" step="0.1" value="0">
+                        <div class="time-text" id="time-duration">0:00</div>
+                    </div>
+                    
+                    <div class="btn-row">
+                        <button class="ctrl-btn" id="prevBtn"><i class="fas fa-backward-step"></i></button>
+                        <button class="ctrl-btn" id="playPauseBtn"><i class="fas fa-play" style="margin-left: 4px;"></i></button>
+                        <button class="ctrl-btn" id="nextBtn"><i class="fas fa-forward-step"></i></button>
+                        <button class="ctrl-btn" id="fullscreenBtn"><i class="fas fa-expand"></i></button>
+                    </div>
+
+                    <div class="channel-row">
+                        <button class="chan-btn" data-role="stereo">STEREO</button>
+                        <button class="chan-btn" data-role="left">CH-L</button>
+                        <button class="chan-btn" data-role="right">CH-R</button>
+                    </div>
+                </div>
+                <div class="hardware-screws bottom">
+                    <span>+</span><span>+</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Queue Section -->
+        <section id="playlist-container">
+            <div class="queue-header">TRANSMISSION QUEUE</div>
+            <div id="playlist-buttons"></div>
+        </section>
+    </div>
+
+    <script>
+    let audioCtx, sourceNode, splitterNode;
+    let channelRole = new URLSearchParams(location.search).get('channel');
+    if (channelRole !== 'left' && channelRole !== 'right') channelRole = 'stereo';
+
+    // --- LENIS SMOOTH SCROLL ---
+    const lenis = new Lenis({ duration: 1.2, smooth: true });
+    function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
+    requestAnimationFrame(raf);
+
+    // --- GSAP KINETIC ANIMATIONS ---
+    gsap.registerPlugin(ScrollTrigger);
+
+    // Marquee
+    gsap.to('.marquee', { xPercent: -50, ease: 'none', duration: 15, repeat: -1 });
+
+    // Spinning CD
+    const cd = document.querySelector('.cd');
+    let scrollRotation = 0, playRotation = 0;
+    
+    ScrollTrigger.create({
+        trigger: 'body',
+        start: 'top top',
+        end: 'bottom bottom',
+        onUpdate: (self) => { scrollRotation = self.progress * 1080; }
+    });
+
+    gsap.ticker.add(() => {
+        if (typeof isPlaying !== 'undefined' && isPlaying) {
+            playRotation += 1.5; 
+        }
+        gsap.set(cd, { rotation: scrollRotation + playRotation });
+    });
+
+    // Parallax Images
+    gsap.utils.toArray('.parallax').forEach(layer => {
+        const speed = layer.dataset.speed;
+        gsap.to(layer, {
+            y: (i, el) => (1 - parseFloat(speed)) * (ScrollTrigger.maxScroll(window) - (layer.offsetTop || 0)),
+            ease: 'none',
+            scrollTrigger: { trigger: layer, start: 'top bottom', end: 'bottom top', scrub: true }
+        });
+    });
+
+    // --- TAPE RECORDER CURSOR ---
+    const cursor = document.querySelector('.cursor');
+    const cursorText = document.querySelector('.cursor-text');
+    let cursorX = window.innerWidth / 2, cursorY = window.innerHeight / 2;
+    let cTargetX = cursorX, cTargetY = cursorY;
+    
+    document.addEventListener('mousemove', (e) => {
+        cTargetX = e.clientX; cTargetY = e.clientY;
+    });
+    
+    gsap.ticker.add(() => {
+        cursorX += (cTargetX - cursorX) * 0.35;
+        cursorY += (cTargetY - cursorY) * 0.35;
+        gsap.set(cursor, { x: cursorX, y: cursorY });
+    });
+
+    function attachCursorHover(el, text) {
+        el.addEventListener('mouseenter', () => { cursor.classList.add('active'); cursorText.textContent = text; });
+        el.addEventListener('mouseleave', () => { cursor.classList.remove('active'); });
+    }
+
+    document.querySelectorAll('.ctrl-btn').forEach(btn => attachCursorHover(btn, "CLICK"));
+    document.querySelectorAll('.chan-btn').forEach(btn => attachCursorHover(btn, "SET"));
+    
+    const unlockBtn = document.getElementById('unlockBtn');
+    unlockBtn.addEventListener('mouseenter', () => { cursor.classList.add('active'); cursorText.textContent = "BOOT"; });
+    unlockBtn.addEventListener('mouseleave', () => { cursor.classList.remove('active'); });
+    
+    const progressEl = document.getElementById('progressBar');
+    progressEl.addEventListener('mouseenter', () => { cursor.classList.add('active'); cursorText.textContent = "TUNE"; });
+    progressEl.addEventListener('mouseleave', () => { cursor.classList.remove('active'); });
+
+    // --- EXISTING APPLICATION LOGIC ---
+    const socket = io();
+    const video = document.getElementById('myVideo');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const progressBar = document.getElementById('progressBar');
+    const trackLabel = document.getElementById('track-label');
+    const playlistButtons = document.getElementById('playlist-buttons');
+
+    let currentTrack = ""; 
+    let isPlaying = false;
+    let isUserScrubbing = false;
+
+    // --- 0. CLOCK SYNC ---
+    let clockOffset = 0; 
+    function serverNow() { return Date.now() + clockOffset; }
+
+    function syncClock(samples = 6) {
+        let best = null, done = 0;
+        const ping = () => {
+            const t0 = Date.now();
+            socket.emit('time_sync');
+            socket.once('time_sync_response', (serverTime) => {
+                const t1 = Date.now();
+                const rtt = t1 - t0;
+                const offset = serverTime - (t0 + t1) / 2;
+                if (!best || rtt < best.rtt) best = { rtt, offset };
+                if (++done < samples) setTimeout(ping, 120);
+                else clockOffset = best.offset;
+            });
+        };
+        ping();
+    }
+    socket.on('connect', () => syncClock());
+    setInterval(() => syncClock(3), 5 * 60 * 1000); 
+
+    // --- 0b. CONTINUOUS DRIFT CORRECTION ---
+    let refState = { mediaTime: 0, serverTime: 0, isPlaying: false };
+
+    setInterval(() => {
+        if (!refState.isPlaying || video.paused || video.seeking || isUserScrubbing) return;
+        const expected = refState.mediaTime + (serverNow() - refState.serverTime) / 1000;
+        const drift = video.currentTime - expected;
+        if (Math.abs(drift) > 1.5) {
+            video.currentTime = expected;
+            video.playbackRate = 1;
+        } else if (Math.abs(drift) > 0.08) {
+            video.playbackRate = drift > 0 ? 0.94 : 1.06; 
+        } else {
+            video.playbackRate = 1;
+        }
+    }, 1000);
+
+    // --- 1. INITIALIZATION & PRELOAD ---
+    function formatName(name) { return name.replace(/\.(mp4|mp3|webm|mkv)$/i, ''); }
+
+    socket.on('load_playlist', (files) => {
+        if (files.length > 0 && !currentTrack) {
+            currentTrack = files[0];
+            video.src = files[0];
+            video.load();
+            trackLabel.textContent = formatName(files[0]);
+        }
+        renderQueue(files);
+    });
+
+    socket.on('sync_state', (state) => {
+        if (!state || !state.filename) return;
+        currentTrack = state.filename;
+        video.src = state.filename;
+        video.load();
+        trackLabel.textContent = formatName(state.filename);
+        refState = { mediaTime: Number(state.mediaTime), serverTime: state.serverTimeAtUpdate, isPlaying: state.isPlaying };
+
+        const applyState = () => {
+            const expected = state.isPlaying
+                ? Number(state.mediaTime) + Math.max(0, (serverNow() - state.serverTimeAtUpdate) / 1000)
+                : Number(state.mediaTime);
+            try { video.currentTime = expected; } catch (err) {}
+            video.playbackRate = 1;
+            isPlaying = state.isPlaying;
+            playPauseBtn.innerHTML = state.isPlaying
+                ? '<i class="fas fa-pause" style="margin-left: 0;"></i>'
+                : '<i class="fas fa-play" style="margin-left: 4px;"></i>';
+            if (state.isPlaying) video.play().catch(() => {});
+        };
+
+        if (video.readyState < 1) video.addEventListener('loadedmetadata', applyState, { once: true });
+        else applyState();
+    });
+
+    unlockBtn.addEventListener('click', () => {
+        if(typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        video.play().catch(() => {}); video.pause();
+        
+        const tl = gsap.timeline({
+            onComplete: () => {
+                document.getElementById('unlock-overlay').style.display = 'none';
+                if (channelRole !== 'stereo') applyChannelRole(channelRole); 
+                // Refresh ScrollTrigger to recalculate layout now that app is visible
+                ScrollTrigger.refresh();
+            }
+        });
+        
+        tl.to('.huge-title', { scale: 1.1, opacity: 0, duration: 0.8, ease: 'power3.inOut' })
+          .to('#unlockBtn', { opacity: 0, y: 20, duration: 0.5, ease: 'power2.in' }, "-=0.6")
+          .to('#unlock-overlay', { height: 0, duration: 1, ease: 'expo.inOut' }, "-=0.2")
+          .fromTo('#app', { opacity: 0 }, { opacity: 1, display: 'block', duration: 1, ease: 'power3.out' }, "-=0.5");
+    });
+
+    // --- 2. THE QUEUE & THE AUTO-SCROLL FIX ---
+    function renderQueue(files) {
+        playlistButtons.innerHTML = '';
+        files.forEach((file) => {
+            const item = document.createElement('div');
+            item.className = "playlist-item";
+            if(file === currentTrack) item.classList.add('active');
+            item.draggable = true; item.dataset.filename = file;
+
+            item.innerHTML = `
+                <div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>
+                <div class="song-title">${formatName(file)}</div>
+                <div class="reorder-btns">
+                    <button class="up-btn"><i class="fas fa-chevron-up"></i></button>
+                    <button class="down-btn"><i class="fas fa-chevron-down"></i></button>
+                </div>
+            `;
+            
+            attachCursorHover(item, "PLAY");
+            attachCursorHover(item.querySelector('.drag-handle'), "DRAG");
+
+            item.onclick = (e) => {
+                if (e.target.closest('.drag-handle') || e.target.closest('.reorder-btns')) return;
+                socket.emit('trigger_play', { filename: file, mediaTime: 0 });
+            };
+            
+            item.querySelector('.up-btn').onclick = (e) => { e.stopPropagation(); moveItem(item, -1); };
+            item.querySelector('.down-btn').onclick = (e) => { e.stopPropagation(); moveItem(item, 1); };
+
+            item.addEventListener('dragstart', () => {
+                item.classList.add('dragging');
+                isDraggingQueue = true;
+                requestAnimationFrame(dragScrollLoop); 
+            });
+            
+            item.addEventListener('dragend', () => {
+                item.classList.remove('dragging');
+                isDraggingQueue = false;
+                scrollVelocity = 0; 
+                socket.emit('update_queue', [...document.querySelectorAll('.playlist-item')].map(i => i.dataset.filename));
+            });
+            
+            playlistButtons.appendChild(item);
+        });
+    }
+
+    let isDraggingQueue = false;
+    let scrollVelocity = 0;
+
+    function dragScrollLoop() {
+        if (isDraggingQueue && scrollVelocity !== 0) {
+            window.scrollBy(0, scrollVelocity);
+        }
+        if (isDraggingQueue) requestAnimationFrame(dragScrollLoop);
+    }
+
+    playlistButtons.addEventListener('dragover', e => {
+        e.preventDefault();
+        const threshold = 120; 
+        const y = e.clientY;
+        const screenHeight = window.innerHeight;
+        
+        if (y < threshold) scrollVelocity = -15; 
+        else if (y > screenHeight - threshold) scrollVelocity = 15; 
+        else scrollVelocity = 0; 
+
+        const afterElement = [...playlistButtons.querySelectorAll('.playlist-item:not(.dragging)')].find(child => {
+            return e.clientY <= child.getBoundingClientRect().top + child.offsetHeight / 2;
+        });
+        const draggable = document.querySelector('.dragging');
+        if (draggable) {
+            if (afterElement) playlistButtons.insertBefore(draggable, afterElement);
+            else playlistButtons.appendChild(draggable);
+        }
+    });
+
+    document.addEventListener('dragend', () => { isDraggingQueue = false; scrollVelocity = 0; });
+    document.addEventListener('drop', () => { isDraggingQueue = false; scrollVelocity = 0; });
+
+    function moveItem(item, dir) {
+        const sibs = [...playlistButtons.children], idx = sibs.indexOf(item);
+        if (dir === -1 && idx > 0) playlistButtons.insertBefore(item, sibs[idx - 1]);
+        if (dir === 1 && idx < sibs.length - 1) playlistButtons.insertBefore(item, sibs[idx + 2]);
+        socket.emit('update_queue', [...document.querySelectorAll('.playlist-item')].map(i => i.dataset.filename));
+    }
+
+    // --- 3. MASTER PLAYBACK CONTROLS ---
+    function triggerTogglePlay() {
+        if (!currentTrack) return;
+        if (isPlaying) {
+            socket.emit('trigger_pause', { mediaTime: video.currentTime });
+        } else {
+            socket.emit('trigger_play', { filename: currentTrack, mediaTime: video.currentTime });
+        }
+    }
+    
+    playPauseBtn.addEventListener('click', triggerTogglePlay);
+    video.addEventListener('click', triggerTogglePlay); 
+    attachCursorHover(video, "TOGGLE");
+
+    function skipTrack(dir) {
+        const queue = [...document.querySelectorAll('.playlist-item')].map(i => i.dataset.filename);
+        const idx = queue.indexOf(currentTrack);
+        if (idx === -1) return;
+        if (dir === -1 && idx > 0) socket.emit('trigger_play', { filename: queue[idx - 1], mediaTime: 0 });
+        if (dir === 1 && idx < queue.length - 1) socket.emit('trigger_play', { filename: queue[idx + 1], mediaTime: 0 });
+    }
+    document.getElementById('prevBtn').addEventListener('click', () => skipTrack(-1));
+    document.getElementById('nextBtn').addEventListener('click', () => skipTrack(1));
+    video.addEventListener('ended', () => skipTrack(1));
+
+    document.getElementById('fullscreenBtn').addEventListener('click', () => {
+        if (!document.fullscreenElement) document.getElementById('player-wrapper').requestFullscreen().catch(()=>{});
+        else document.exitFullscreen();
+    });
+
+    // --- 4. THE TIMELINE SCRUBBER ---
+    function fmtTime(sec) {
+        if (isNaN(sec)) return "0:00";
+        const m = Math.floor(sec / 60), s = Math.floor(sec % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
+    progressBar.addEventListener('mousedown', () => isUserScrubbing = true);
+    progressBar.addEventListener('touchstart', () => isUserScrubbing = true, {passive: true});
+    
+    progressBar.addEventListener('input', () => {
+        isUserScrubbing = true;
+        document.getElementById('time-current').textContent = fmtTime(progressBar.value);
+    });
+    
+    progressBar.addEventListener('change', () => {
+        isUserScrubbing = false;
+        socket.emit('trigger_seek', { mediaTime: Number(progressBar.value) });
+    });
+
+    video.addEventListener('timeupdate', () => {
+        if (!isUserScrubbing) {
+            progressBar.value = video.currentTime;
+            document.getElementById('time-current').textContent = fmtTime(video.currentTime);
+        }
+    });
+    
+    video.addEventListener('loadedmetadata', () => {
+        progressBar.max = video.duration;
+        document.getElementById('time-duration').textContent = fmtTime(video.duration);
+    });
+
+    // --- 5. THE PERFECT SYNC ENGINE EXECUTION ---
+    socket.on('command_play', (data) => {
+        playPauseBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-left: 0;"></i>'; 
+        
+        const isNewTrack = (currentTrack !== data.filename);
+        const targetMediaTime = Number(data.mediaTime) || 0;
+
+        if (isNewTrack) {
+            video.src = data.filename;
+            video.load();
+            currentTrack = data.filename;
+            trackLabel.textContent = formatName(data.filename);
+            renderQueue([...document.querySelectorAll('.playlist-item')].map(i => i.dataset.filename));
+        }
+
+        refState = { mediaTime: targetMediaTime, serverTime: data.time, isPlaying: true };
+
+        const safePlay = () => {
+            const delay = data.time - serverNow();
+            const catchUp = delay < 0 ? Math.abs(delay) / 1000 : 0;
+            try { video.currentTime = targetMediaTime + catchUp; } catch (err) {}
+            video.playbackRate = 1;
+
+            const startPlayback = () => {
+                isPlaying = true;
+                playPauseBtn.innerHTML = '<i class="fas fa-pause" style="margin-left: 0;"></i>';
+                video.play().catch(()=>{});
+            };
+
+            if (delay > 0) setTimeout(startPlayback, delay);
+            else startPlayback();
+        };
+
+        if (isNewTrack && video.readyState < 3) {
+            video.addEventListener('canplay', safePlay, { once: true });
+        } else {
+            safePlay();
+        }
+    });
+
+    socket.on('command_pause', (data) => {
+        isPlaying = false;
+        playPauseBtn.innerHTML = '<i class="fas fa-play" style="margin-left: 4px;"></i>';
+        video.pause();
+        video.playbackRate = 1;
+        const mediaTime = Number(data.mediaTime) || 0;
+        video.currentTime = mediaTime;
+        refState = { mediaTime, serverTime: serverNow(), isPlaying: false };
+    });
+
+    socket.on('command_seek', (data) => {
+        video.pause();
+        playPauseBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-left: 0;"></i>'; 
+        
+        const mediaTime = Number(data.mediaTime) || 0;
+        video.currentTime = mediaTime;
+        video.playbackRate = 1;
+        refState = { mediaTime, serverTime: data.time, isPlaying };
+
+        const delay = data.time - serverNow();
+        
+        if (isPlaying) {
+            const resume = () => {
+                playPauseBtn.innerHTML = '<i class="fas fa-pause" style="margin-left: 0;"></i>';
+                video.play().catch(()=>{});
+            };
+            if (delay > 0) setTimeout(resume, delay);
+            else resume();
+        } else {
+            playPauseBtn.innerHTML = '<i class="fas fa-play" style="margin-left: 4px;"></i>';
+        }
+    });
+
+    // --- 6. STEREO CHANNEL SPLIT ---
+    document.querySelectorAll('.chan-btn').forEach(b => b.classList.toggle('active', b.dataset.role === channelRole));
+
+    function ensureAudioGraph() {
+        if (audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        sourceNode = audioCtx.createMediaElementSource(video);
+        splitterNode = audioCtx.createChannelSplitter(2);
+        sourceNode.connect(splitterNode);
+    }
+
+    function applyChannelRole(role) {
+        channelRole = role;
+        ensureAudioGraph();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        try { sourceNode.disconnect(audioCtx.destination); } catch (e) {}
+        try { splitterNode.disconnect(audioCtx.destination); } catch (e) {}
+
+        if (role === 'left') splitterNode.connect(audioCtx.destination, 0, 0);
+        else if (role === 'right') splitterNode.connect(audioCtx.destination, 1, 0);
+        else sourceNode.connect(audioCtx.destination); 
+
+        document.querySelectorAll('.chan-btn').forEach(b => b.classList.toggle('active', b.dataset.role === role));
+    }
+
+    document.querySelectorAll('.chan-btn').forEach(btn => {
+        btn.addEventListener('click', () => applyChannelRole(btn.dataset.role));
+    });
+
+    </script>
+</body>
+</html>
